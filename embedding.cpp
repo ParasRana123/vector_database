@@ -91,6 +91,18 @@ vector<double> embed_query(const string &query, int dim = EMBEDDING_DIM) {
     return embedding;
 }
 
+// ---------------------------------------------------------------------
+// Simple cosine similarity helper, useful once you have two embeddings
+// and want to compare how "close" two queries are.
+// ---------------------------------------------------------------------
+double cosine_similarity(const vector<double> &a, const vector<double> &b) {
+    double dot = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        dot += a[i] * b[i];
+    }
+    return dot;
+}
+
 void print_vector(const vector<double> &vec) {
     cout << "[";
     for (size_t i = 0; i < vec.size(); ++i) {
@@ -104,9 +116,25 @@ int main() {
     cout << "Enter a query: ";
     string query;
     getline(cin, query);
+
     vector<double> embedding = embed_query(query);
     cout << "\nQuery: \"" << query << "\"\n";
     cout << "Embedding vector (" << embedding.size() << " dims):\n";
     print_vector(embedding);
+
+    // Demo: compare against a second query to show cosine similarity usage.
+    cout << "\nEnter a second query to compare similarity (or press Enter to skip): ";
+    string query2;
+    getline(cin, query2);
+
+    if (!query2.empty()) {
+        vector<double> embedding2 = embed_query(query2);
+        double sim = cosine_similarity(embedding, embedding2);
+        cout << "\nQuery 2: \"" << query2 << "\"\n";
+        cout << "Embedding vector (" << embedding2.size() << " dims):\n";
+        print_vector(embedding2);
+        cout << "\nCosine similarity between query 1 and query 2: "
+                  << fixed << setprecision(4) << sim << "\n";
+    }
     return 0;
 }
