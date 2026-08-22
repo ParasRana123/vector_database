@@ -20,3 +20,15 @@ target_include_directories(test_onnx PRIVATE
 target_link_libraries(test_onnx PRIVATE
     "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
 )
+
+add_executable(inspect_model
+    examples/inspect_model.cpp
+)
+
+target_include_directories(inspect_model PRIVATE
+    "${ONNXRUNTIME_ROOT}/include"
+)
+
+target_link_libraries(inspect_model PRIVATE
+    "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
+)
