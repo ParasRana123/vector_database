@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniLM Vector Search</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">LOCAL VECTOR DATABASE</p>
+      <h1>MiniLM similarity search</h1>
+      <p>Add custom texts, then search for the closest meanings using 384-dimensional MiniLM embeddings.</p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}
+    {% endwith %}
+
+    <section class="grid">
+      <article>
+        <h2>Add a document</h2>
+        <form action="{{ url_for('add_document') }}" method="post">
+          <textarea name="text" placeholder="e.g. Neural networks learn patterns from data" required></textarea>
+          <button type="submit">Add text</button>
+        </form>
+        <form action="{{ url_for('load_example') }}" method="post" class="inline-form">
+          <button type="submit" class="secondary">Load the 3-document example</button>
+        </form>
+      </article>
+
+      <article>
+        <h2>Search</h2>
+        <form action="{{ url_for('search') }}" method="post">
+          <textarea name="query" placeholder="Enter a query" required>{{ query }}</textarea>
+          <button type="submit">Find similar texts</button>
+        </form>
+      </article>
+    </section>
+
+    <section>
+      <div class="section-title"><h2>Stored documents ({{ documents|length }})</h2>
+        {% if documents %}<form action="{{ url_for('clear_documents') }}" method="post"><button class="link" type="submit">Clear all</button></form>{% endif %}
+      </div>
+      {% if documents %}
+        <ol class="documents">
+          {% for document in documents %}<li><span>#{{ document.id }}</span>{{ document.text }}</li>{% endfor %}
+        </ol>
+      {% else %}<p class="empty">No documents yet. Add your own texts or load the example.</p>{% endif %}
+    </section>
+
+    {% if results is not none %}
+      <section>
+        <h2>Similarity results</h2>
+        <ol class="results">
+          {% for result in results %}
+            <li><div><span class="rank">#{{ result.id }}</span><p>{{ result.text }}</p></div><strong>{{ '%.3f'|format(result.score) }}</strong></li>
+          {% endfor %}
+        </ol>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>

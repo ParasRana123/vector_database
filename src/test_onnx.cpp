@@ -135,7 +135,7 @@ std::vector<float> embed_minilm(Ort::Session& session, tokenizers::Tokenizer& to
 }
 } // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
         const auto model_dir = std::filesystem::path(PROJECT_SOURCE_DIR) / "models" / "all-MiniLM-L6-v2";
         auto tokenizer = load_minilm_tokenizer(model_dir);
@@ -154,6 +154,21 @@ int main() {
         for (const auto& name : input_names_owned) input_names.push_back(name.c_str());
         auto output_name = session.GetOutputNameAllocated(0, allocator);
         const char* output_names[] = {output_name.get()};
+
+        // Machine-readable mode used by the local Flask test UI.
+        if (argc == 3 && std::string(argv[1]) == "--embed") {
+            const auto embedding = embed_minilm(session, *tokenizer, argv[2], input_names, output_names);
+            std::cout << std::setprecision(9);
+            for (size_t i = 0; i < embedding.size(); ++i) {
+                std::cout << (i == 0 ? "" : ",") << embedding[i];
+            }
+            std::cout << '\n';
+            return 0;
+        }
+
+        if (argc != 1) {
+            throw std::runtime_error("Usage: test_onnx [--embed <text>]");
+        }
 
         std::vector<Document> documents = {
             {1, "I study artificial intelligence", {}},
