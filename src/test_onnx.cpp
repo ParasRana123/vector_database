@@ -12,10 +12,38 @@
 #include <tokenizers_cpp.h>
 
 namespace {
+constexpr size_t kMiniLMMaxSequenceLength = 512;
+
 std::string read_file(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("Cannot open tokenizer: " + path.string());
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
+// all-MiniLM-L6-v2 uses the uncased BERT WordPiece tokenizer.  Loading the
+// tokenizer.json keeps its normalization and WordPiece rules in sync with the
+// ONNX model rather than trying to reimplement them here.
+std::unique_ptr<tokenizers::Tokenizer> load_minilm_tokenizer(const std::filesystem::path& model_dir) {
+    auto tokenizer = tokenizers::Tokenizer::FromBlobJSON(read_file(model_dir / "tokenizer.json"));
+    if (tokenizer->TokenToId("[PAD]") != 0 || tokenizer->TokenToId("[UNK]") != 100 ||
+        tokenizer->TokenToId("[CLS]") != 101 || tokenizer->TokenToId("[SEP]") != 102) {
+        throw std::runtime_error("tokenizer.json is not compatible with all-MiniLM-L6-v2.");
+    }
+    return tokenizer;
+}
+
+std::vector<int64_t> encode_minilm(tokenizers::Tokenizer& tokenizer, const std::string& sentence) {
+    // Reserve room for MiniLM's required [CLS] and [SEP] tokens, then truncate
+    // to its 512-token BERT context window.
+    auto wordpiece_ids = tokenizer.Encode(sentence);
+    wordpiece_ids.resize(std::min(wordpiece_ids.size(), kMiniLMMaxSequenceLength - 2));
+
+    std::vector<int64_t> ids;
+    ids.reserve(wordpiece_ids.size() + 2);
+    ids.push_back(101); // [CLS]
+    for (int32_t id : wordpiece_ids) ids.push_back(id);
+    ids.push_back(102); // [SEP]
+    return ids;
 }
 
 std::vector<float> mean_pool_and_normalize(const float* token_embeddings, size_t token_count,
@@ -39,9 +67,7 @@ std::vector<float> mean_pool_and_normalize(const float* token_embeddings, size_t
 int main() {
     try {
         const auto model_dir = std::filesystem::path(PROJECT_SOURCE_DIR) / "models" / "all-MiniLM-L6-v2";
-        // tokenizer.json defines the exact BERT normalizer, pre-tokenizer,
-        // WordPiece vocabulary, [CLS]/[SEP] template, truncation, and padding.
-        auto tokenizer = tokenizers::Tokenizer::FromBlobJSON(read_file(model_dir / "tokenizer.json"));
+        auto tokenizer = load_minilm_tokenizer(model_dir);
         Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MiniLMEmbedding");
         Ort::SessionOptions options;
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -60,10 +86,9 @@ int main() {
 
         std::cout << "MiniLM is ready. Enter a sentence (empty line exits).\n";
         for (std::string sentence; std::cout << "> " && std::getline(std::cin, sentence) && !sentence.empty();) {
-            const auto tokenizer_ids = tokenizer->EncodeWithSpecialTokens(sentence);
-            std::vector<int64_t> ids(tokenizer_ids.begin(), tokenizer_ids.end());
-            std::vector<int64_t> mask(ids.size()), type_ids(ids.size(), 0);
-            for (size_t i = 0; i < ids.size(); ++i) mask[i] = ids[i] != 0; // [PAD] is ID 0 in this tokenizer.
+            auto ids = encode_minilm(*tokenizer, sentence);
+            // Each sentence is run without batch padding, so every token is attended to.
+            std::vector<int64_t> mask(ids.size(), 1), type_ids(ids.size(), 0);
             const std::array<int64_t, 2> shape{1, static_cast<int64_t>(ids.size())};
             auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
             std::vector<Ort::Value> inputs;
