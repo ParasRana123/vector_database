@@ -1,87 +1,35 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <onnxruntime_cxx_api.h>
+#include <tokenizers_cpp.h>
 
 namespace {
-constexpr size_t kMaxSequenceLength = 256;
-
-class BertTokenizer {
-public:
-    explicit BertTokenizer(const std::filesystem::path& vocab_path) {
-        std::ifstream file(vocab_path);
-        if (!file) throw std::runtime_error("Cannot open vocabulary: " + vocab_path.string());
-        std::string token;
-        for (int64_t id = 0; std::getline(file, token); ++id) vocab_[token] = id;
-        for (const char* required : {"[PAD]", "[UNK]", "[CLS]", "[SEP]"})
-            if (!vocab_.count(required)) throw std::runtime_error("Vocabulary is missing " + std::string(required));
-    }
-
-    std::vector<int64_t> encode(const std::string& text) const {
-        std::vector<int64_t> ids{vocab_.at("[CLS]")};
-        for (const auto& word : basic_tokenize(text)) {
-            for (const auto& piece : wordpiece_tokenize(word)) {
-                if (ids.size() + 1 >= kMaxSequenceLength) break;
-                ids.push_back(vocab_.at(piece));
-            }
-            if (ids.size() + 1 >= kMaxSequenceLength) break;
-        }
-        ids.push_back(vocab_.at("[SEP]"));
-        return ids;
-    }
-
-private:
-    std::unordered_map<std::string, int64_t> vocab_;
-
-    static std::vector<std::string> basic_tokenize(const std::string& text) {
-        std::vector<std::string> tokens;
-        std::string current;
-        for (unsigned char c : text) {
-            if (std::isalnum(c)) current.push_back(static_cast<char>(std::tolower(c)));
-            else {
-                if (!current.empty()) { tokens.push_back(current); current.clear(); }
-                if (std::ispunct(c)) tokens.emplace_back(1, static_cast<char>(c));
-            }
-        }
-        if (!current.empty()) tokens.push_back(current);
-        return tokens;
-    }
-
-    std::vector<std::string> wordpiece_tokenize(const std::string& word) const {
-        std::vector<std::string> pieces;
-        for (size_t start = 0; start < word.size();) {
-            size_t end = word.size();
-            std::string found;
-            while (end > start) {
-                std::string candidate = (start ? "##" : "") + word.substr(start, end - start);
-                if (vocab_.count(candidate)) { found = std::move(candidate); break; }
-                --end;
-            }
-            if (found.empty()) return {"[UNK]"};
-            pieces.push_back(std::move(found));
-            start = end;
-        }
-        return pieces;
-    }
-};
+std::string read_file(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("Cannot open tokenizer: " + path.string());
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
 
 std::vector<float> mean_pool_and_normalize(const float* token_embeddings, size_t token_count,
                                             size_t hidden_size, const std::vector<int64_t>& mask) {
     std::vector<float> embedding(hidden_size, 0.0F);
+    size_t unmasked_tokens = 0;
     for (size_t token = 0; token < token_count; ++token)
-        if (mask[token]) for (size_t dim = 0; dim < hidden_size; ++dim)
-            embedding[dim] += token_embeddings[token * hidden_size + dim];
+        if (mask[token]) {
+            ++unmasked_tokens;
+            for (size_t dim = 0; dim < hidden_size; ++dim)
+                embedding[dim] += token_embeddings[token * hidden_size + dim];
+        }
     float squared_norm = 0.0F;
-    for (float& value : embedding) { value /= static_cast<float>(token_count); squared_norm += value * value; }
+    for (float& value : embedding) { value /= static_cast<float>(unmasked_tokens); squared_norm += value * value; }
     const float norm = std::sqrt(squared_norm);
     for (float& value : embedding) value /= norm;
     return embedding;
@@ -91,7 +39,9 @@ std::vector<float> mean_pool_and_normalize(const float* token_embeddings, size_t
 int main() {
     try {
         const auto model_dir = std::filesystem::path(PROJECT_SOURCE_DIR) / "models" / "all-MiniLM-L6-v2";
-        BertTokenizer tokenizer(model_dir / "vocab.txt");
+        // tokenizer.json defines the exact BERT normalizer, pre-tokenizer,
+        // WordPiece vocabulary, [CLS]/[SEP] template, truncation, and padding.
+        auto tokenizer = tokenizers::Tokenizer::FromBlobJSON(read_file(model_dir / "tokenizer.json"));
         Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MiniLMEmbedding");
         Ort::SessionOptions options;
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -110,8 +60,10 @@ int main() {
 
         std::cout << "MiniLM is ready. Enter a sentence (empty line exits).\n";
         for (std::string sentence; std::cout << "> " && std::getline(std::cin, sentence) && !sentence.empty();) {
-            std::vector<int64_t> ids = tokenizer.encode(sentence);
-            std::vector<int64_t> mask(ids.size(), 1), type_ids(ids.size(), 0);
+            const auto tokenizer_ids = tokenizer->EncodeWithSpecialTokens(sentence);
+            std::vector<int64_t> ids(tokenizer_ids.begin(), tokenizer_ids.end());
+            std::vector<int64_t> mask(ids.size()), type_ids(ids.size(), 0);
+            for (size_t i = 0; i < ids.size(); ++i) mask[i] = ids[i] != 0; // [PAD] is ID 0 in this tokenizer.
             const std::array<int64_t, 2> shape{1, static_cast<int64_t>(ids.size())};
             auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
             std::vector<Ort::Value> inputs;
