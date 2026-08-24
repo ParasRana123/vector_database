@@ -21,6 +21,17 @@ target_link_libraries(test_onnx PRIVATE
     "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
 )
 
+target_compile_definitions(test_onnx PRIVATE
+    PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+# Ensure the executable loads the DLL that matches the headers and import library.
+add_custom_command(TARGET test_onnx POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
+        "$<TARGET_FILE_DIR:test_onnx>/onnxruntime.dll"
+)
+
 add_executable(inspect_model
     examples/inspect_model.cpp
 )
