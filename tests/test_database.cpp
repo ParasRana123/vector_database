@@ -1,55 +1,67 @@
 #include "vectordb/engine/database.hpp"
 #include <iostream>
-#include <cassert>
 #include <filesystem>
+#include <cstdlib>
+
+#define DB_ASSERT(cond) do { \
+    if (!(cond)) { \
+        std::cerr << "[ASSERTION FAILED] " << #cond << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+        std::exit(1); \
+    } \
+} while(0)
 
 using namespace vectordb;
 
 void test_db_lifecycle() {
     std::string test_dir = "./test_db_data_lifecycle";
-    std::filesystem::remove_all(test_dir);
+    std::error_code ec;
+    std::filesystem::remove_all(test_dir, ec);
 
-    DatabaseConfig cfg;
-    cfg.data_dir = test_dir;
-    cfg.enable_wal = true;
+    {
+        DatabaseConfig cfg;
+        cfg.data_dir = test_dir;
+        cfg.enable_wal = true;
 
-    Database db(cfg);
+        Database db(cfg);
 
-    CollectionConfig c1;
-    c1.name = "articles";
-    c1.dimension = 4;
-    c1.metric = DistanceMetric::COSINE;
-    c1.index_type = IndexType::HNSW;
+        CollectionConfig c1;
+        c1.name = "articles";
+        c1.dimension = 4;
+        c1.metric = DistanceMetric::COSINE;
+        c1.index_type = IndexType::HNSW;
 
-    assert(db.create_collection(c1));
-    assert(db.has_collection("articles"));
-    assert(!db.has_collection("nonexistent"));
+        bool created = db.create_collection(c1);
+        DB_ASSERT(created);
+        DB_ASSERT(db.has_collection("articles"));
+        DB_ASSERT(!db.has_collection("nonexistent"));
 
-    Metadata m1;
-    m1.set_string("topic", "AI");
-    m1.set_int("year", 2024);
+        Metadata m1;
+        m1.set_string("topic", "AI");
+        m1.set_int("year", 2024);
 
-    db.insert_vector("articles", 1, {1.0f, 0.0f, 0.0f, 0.0f}, "Intro to AI", m1);
-    db.insert_vector("articles", 2, {0.0f, 1.0f, 0.0f, 0.0f}, "Quantum Physics", {});
+        db.insert_vector("articles", 1, {1.0f, 0.0f, 0.0f, 0.0f}, "Intro to AI", m1);
+        db.insert_vector("articles", 2, {0.0f, 1.0f, 0.0f, 0.0f}, "Quantum Physics", {});
 
-    auto results = db.search_vector("articles", {0.9f, 0.1f, 0.0f, 0.0f}, 1);
-    assert(!results.empty());
-    assert(results[0].id == 1);
-    assert(results[0].payload == "Intro to AI");
+        auto results = db.search_vector("articles", {0.9f, 0.1f, 0.0f, 0.0f}, 1);
+        DB_ASSERT(!results.empty());
+        DB_ASSERT(results[0].id == 1);
+        DB_ASSERT(results[0].payload == "Intro to AI");
 
-    // Search with metadata filter
-    auto f = filter::eq("topic", "AI");
-    auto filtered_res = db.search_vector("articles", {0.1f, 0.9f, 0.0f, 0.0f}, 5, f);
-    assert(!filtered_res.empty());
-    assert(filtered_res[0].id == 1);
+        // Search with metadata filter
+        auto f = filter::eq("topic", std::string("AI"));
+        auto filtered_res = db.search_vector("articles", {0.1f, 0.9f, 0.0f, 0.0f}, 5, f);
+        DB_ASSERT(!filtered_res.empty());
+        DB_ASSERT(filtered_res[0].id == 1);
+    } // db destroyed, files closed
 
+    std::filesystem::remove_all(test_dir, ec);
     std::cout << "[PASS] test_db_lifecycle\n";
-    std::filesystem::remove_all(test_dir);
 }
 
 void test_db_wal_crash_recovery() {
     std::string test_dir = "./test_db_wal_recovery";
-    std::filesystem::remove_all(test_dir);
+    std::error_code ec;
+    std::filesystem::remove_all(test_dir, ec);
 
     {
         // 1. First DB instance: write data and let it flush to WAL
@@ -64,7 +76,8 @@ void test_db_wal_crash_recovery() {
         c_cfg.metric = DistanceMetric::EUCLIDEAN;
         c_cfg.index_type = IndexType::FLAT;
 
-        db.create_collection(c_cfg);
+        bool created = db.create_collection(c_cfg);
+        DB_ASSERT(created);
         db.insert_vector("docs", 101, {1.0f, 2.0f, 3.0f}, "Document 101");
         db.insert_vector("docs", 102, {4.0f, 5.0f, 6.0f}, "Document 102");
     } // db destroyed, simulating shutdown/restart
@@ -82,26 +95,32 @@ void test_db_wal_crash_recovery() {
         c_cfg.metric = DistanceMetric::EUCLIDEAN;
         c_cfg.index_type = IndexType::FLAT;
 
-        db.create_collection(c_cfg);
+        bool created = db.create_collection(c_cfg);
+        DB_ASSERT(created);
         auto coll = db.get_collection("docs");
-        assert(coll != nullptr);
-        assert(coll->size() == 2);
-        assert(coll->contains(101));
-        assert(coll->contains(102));
+        DB_ASSERT(coll != nullptr);
+        DB_ASSERT(coll->size() == 2);
+        DB_ASSERT(coll->contains(101));
+        DB_ASSERT(coll->contains(102));
 
         auto doc = coll->get(101);
-        assert(doc.has_value());
-        assert(doc->payload == "Document 101");
+        DB_ASSERT(doc.has_value());
+        DB_ASSERT(doc->payload == "Document 101");
     }
 
+    std::filesystem::remove_all(test_dir, ec);
     std::cout << "[PASS] test_db_wal_crash_recovery\n";
-    std::filesystem::remove_all(test_dir);
 }
 
 int main() {
-    std::cout << "--- Running Database Lifecycle & WAL Tests ---\n";
-    test_db_lifecycle();
-    test_db_wal_crash_recovery();
-    std::cout << "All Database Lifecycle tests passed successfully!\n";
+    try {
+        std::cout << "--- Running Database Lifecycle & WAL Tests ---\n";
+        test_db_lifecycle();
+        test_db_wal_crash_recovery();
+        std::cout << "All Database Lifecycle tests passed successfully!\n";
+    } catch (const std::exception& e) {
+        std::cerr << "EXCEPTION: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }
