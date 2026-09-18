@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <mutex>
+#include <shared_mutex>
 
 namespace vectordb {
 

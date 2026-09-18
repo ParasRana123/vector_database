@@ -2,6 +2,8 @@
 #include "vectordb/index/flat_index.hpp"
 #include "vectordb/index/hnsw_index.hpp"
 #include "vectordb/storage/serializer.hpp"
+#include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 
 namespace vectordb {

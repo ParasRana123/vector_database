@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include <random>
+#include <mutex>
 #include <shared_mutex>
 
 namespace vectordb {

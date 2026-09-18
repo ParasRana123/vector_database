@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <random>
+#include <mutex>
 
 #include <onnxruntime_cxx_api.h>
 

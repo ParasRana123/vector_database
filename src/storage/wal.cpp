@@ -1,6 +1,7 @@
 #include "vectordb/storage/wal.hpp"
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 
 namespace vectordb {
 

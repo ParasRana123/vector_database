@@ -1,5 +1,6 @@
 #include "vectordb/core/thread_pool.hpp"
 #include <algorithm>
+#include <mutex>
 
 namespace vectordb {
 
