@@ -5,17 +5,28 @@ project(VectorDB VERSION 1.0.0 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(Threads REQUIRED)
+
 set(ONNXRUNTIME_ROOT
     "${CMAKE_SOURCE_DIR}/third_party/onnxruntime"
 )
 
-# MSVC configuration
+# MSVC specific configuration
 if(MSVC)
     add_compile_options(/FS /W3 /O2)
     set(TOKENIZERS_CPP_MSVC_RUNTIME_LIBRARY MD CACHE STRING "" FORCE)
+else()
+    add_compile_options(-O3 -Wall -Wextra)
 endif()
 
-add_subdirectory(third_party/tokenizers-cpp EXCLUDE_FROM_ALL)
+# Check for tokenizers-cpp directory
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/tokenizers-cpp/CMakeLists.txt")
+    add_subdirectory(third_party/tokenizers-cpp EXCLUDE_FROM_ALL)
+    set(HAS_TOKENIZERS_CPP TRUE)
+else()
+    set(HAS_TOKENIZERS_CPP FALSE)
+    message(STATUS "tokenizers-cpp not found; tokenizer support will use fallback embedder if needed.")
+endif()
 
 # Core VectorDB Library
 set(VECTORDB_SOURCES
@@ -41,9 +52,23 @@ target_include_directories(vectordb_core PUBLIC
 )
 
 target_link_libraries(vectordb_core PUBLIC
-    "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
-    tokenizers_cpp
+    Threads::Threads
 )
+
+if(WIN32)
+    target_link_libraries(vectordb_core PUBLIC "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib")
+else()
+    if(EXISTS "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so")
+        target_link_libraries(vectordb_core PUBLIC "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so")
+    else()
+        target_link_libraries(vectordb_core PUBLIC onnxruntime)
+    endif()
+endif()
+
+if(HAS_TOKENIZERS_CPP)
+    target_link_libraries(vectordb_core PUBLIC tokenizers_cpp)
+    target_compile_definitions(vectordb_core PUBLIC HAS_TOKENIZERS_CPP=1)
+endif()
 
 if(MSVC)
     set_property(TARGET vectordb_core PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -56,11 +81,13 @@ macro(add_vectordb_executable target_name source_file)
     if(MSVC)
         set_property(TARGET ${target_name} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     endif()
-    add_custom_command(TARGET ${target_name} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
-            "$<TARGET_FILE_DIR:${target_name}>/onnxruntime.dll"
-    )
+    if(WIN32 AND EXISTS "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll")
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
+                "$<TARGET_FILE_DIR:${target_name}>/onnxruntime.dll"
+        )
+    endif()
 endmacro()
 
 # CLI and Server Executables
@@ -79,7 +106,11 @@ add_vectordb_executable(test_database tests/test_database.cpp)
 add_vectordb_executable(test_benchmark tests/test_benchmark.cpp)
 
 # Legacy / Verification targets
-add_vectordb_executable(test_onnx src/test_onnx.cpp)
-target_compile_definitions(test_onnx PRIVATE PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+if(EXISTS "${CMAKE_SOURCE_DIR}/src/test_onnx.cpp" AND HAS_TOKENIZERS_CPP)
+    add_vectordb_executable(test_onnx src/test_onnx.cpp)
+    target_compile_definitions(test_onnx PRIVATE PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+endif()
 
-add_vectordb_executable(inspect_model examples/inspect_model.cpp)
+if(EXISTS "${CMAKE_SOURCE_DIR}/examples/inspect_model.cpp")
+    add_vectordb_executable(inspect_model examples/inspect_model.cpp)
+endif()
