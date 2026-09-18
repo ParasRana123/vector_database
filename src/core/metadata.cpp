@@ -274,24 +274,64 @@ namespace filter {
     std::shared_ptr<Filter> eq(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::EQUALS, val);
     }
+    std::shared_ptr<Filter> eq(const std::string& field, const char* val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::EQUALS, MetadataValue(std::string(val)));
+    }
+    std::shared_ptr<Filter> eq(const std::string& field, const std::string& val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::EQUALS, MetadataValue(val));
+    }
+    std::shared_ptr<Filter> eq(const std::string& field, int val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::EQUALS, MetadataValue(int64_t(val)));
+    }
+
     std::shared_ptr<Filter> ne(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::NOT_EQUALS, val);
     }
+    std::shared_ptr<Filter> ne(const std::string& field, const char* val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::NOT_EQUALS, MetadataValue(std::string(val)));
+    }
+    std::shared_ptr<Filter> ne(const std::string& field, const std::string& val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::NOT_EQUALS, MetadataValue(val));
+    }
+
     std::shared_ptr<Filter> gt(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::GREATER_THAN, val);
     }
+    std::shared_ptr<Filter> gt(const std::string& field, int val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::GREATER_THAN, MetadataValue(int64_t(val)));
+    }
+
     std::shared_ptr<Filter> gte(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::GREATER_THAN_OR_EQUAL, val);
     }
+    std::shared_ptr<Filter> gte(const std::string& field, int val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::GREATER_THAN_OR_EQUAL, MetadataValue(int64_t(val)));
+    }
+
     std::shared_ptr<Filter> lt(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::LESS_THAN, val);
     }
+    std::shared_ptr<Filter> lt(const std::string& field, int val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::LESS_THAN, MetadataValue(int64_t(val)));
+    }
+
     std::shared_ptr<Filter> lte(const std::string& field, const MetadataValue& val) {
         return std::make_shared<FieldFilter>(field, FilterOp::LESS_THAN_OR_EQUAL, val);
     }
+    std::shared_ptr<Filter> lte(const std::string& field, int val) {
+        return std::make_shared<FieldFilter>(field, FilterOp::LESS_THAN_OR_EQUAL, MetadataValue(int64_t(val)));
+    }
+
     std::shared_ptr<Filter> in(const std::string& field, const std::vector<MetadataValue>& vals) {
         return std::make_shared<FieldFilter>(field, FilterOp::IN, MetadataValue(""), vals);
     }
+    std::shared_ptr<Filter> in(const std::string& field, const std::vector<std::string>& vals) {
+        std::vector<MetadataValue> meta_vals;
+        meta_vals.reserve(vals.size());
+        for (const auto& s : vals) meta_vals.emplace_back(s);
+        return std::make_shared<FieldFilter>(field, FilterOp::IN, MetadataValue(""), meta_vals);
+    }
+
     std::shared_ptr<Filter> all_of(const std::vector<std::shared_ptr<Filter>>& filters) {
         return std::make_shared<CompositeFilter>(FilterOp::AND, filters);
     }

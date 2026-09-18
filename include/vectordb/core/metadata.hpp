@@ -87,12 +87,29 @@ private:
 // Convenience factory helpers
 namespace filter {
     std::shared_ptr<Filter> eq(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> eq(const std::string& field, const char* val);
+    std::shared_ptr<Filter> eq(const std::string& field, const std::string& val);
+    std::shared_ptr<Filter> eq(const std::string& field, int val);
+
     std::shared_ptr<Filter> ne(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> ne(const std::string& field, const char* val);
+    std::shared_ptr<Filter> ne(const std::string& field, const std::string& val);
+
     std::shared_ptr<Filter> gt(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> gt(const std::string& field, int val);
+
     std::shared_ptr<Filter> gte(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> gte(const std::string& field, int val);
+
     std::shared_ptr<Filter> lt(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> lt(const std::string& field, int val);
+
     std::shared_ptr<Filter> lte(const std::string& field, const MetadataValue& val);
+    std::shared_ptr<Filter> lte(const std::string& field, int val);
+
     std::shared_ptr<Filter> in(const std::string& field, const std::vector<MetadataValue>& vals);
+    std::shared_ptr<Filter> in(const std::string& field, const std::vector<std::string>& vals);
+
     std::shared_ptr<Filter> all_of(const std::vector<std::shared_ptr<Filter>>& filters);
     std::shared_ptr<Filter> any_of(const std::vector<std::shared_ptr<Filter>>& filters);
     std::shared_ptr<Filter> not_filter(const std::shared_ptr<Filter>& f);
