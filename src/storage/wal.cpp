@@ -15,7 +15,7 @@ static void write_wal_str(std::ofstream& out, const std::string& str) {
 static std::string read_wal_str(std::ifstream& in) {
     uint32_t len = 0;
     in.read(reinterpret_cast<char*>(&len), sizeof(len));
-    if (len == 0 || !in.good()) return "";
+    if (len == 0 || in.fail()) return "";
     std::string s(len, '\0');
     in.read(&s[0], len);
     return s;
@@ -134,11 +134,8 @@ size_t WAL::replay(const std::string& wal_path, const ReplayCallback& callback) 
     if (ver > WAL_VERSION) return 0;
 
     size_t count = 0;
-    while (in.peek() != EOF && in.good()) {
-        uint8_t op_byte = 0;
-        in.read(reinterpret_cast<char*>(&op_byte), sizeof(op_byte));
-        if (!in.good()) break;
-
+    uint8_t op_byte = 0;
+    while (in.read(reinterpret_cast<char*>(&op_byte), sizeof(op_byte))) {
         WALRecord rec;
         rec.type = static_cast<WALOpType>(op_byte);
 
@@ -159,7 +156,7 @@ size_t WAL::replay(const std::string& wal_path, const ReplayCallback& callback) 
             // No extra payload
         }
 
-        if (in.good() && callback) {
+        if (!in.fail() && callback) {
             callback(rec);
             ++count;
         }
