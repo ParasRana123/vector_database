@@ -13,11 +13,12 @@ set(ONNXRUNTIME_ROOT
 
 # MSVC specific configuration
 if(MSVC)
-    add_compile_options(/FS /W3 /O2)
+    add_compile_options(/FS)
     set(TOKENIZERS_CPP_MSVC_RUNTIME_LIBRARY MD CACHE STRING "" FORCE)
-else()
-    add_compile_options(-O3 -Wall -Wextra)
 endif()
+
+# Disable SentencePiece in tokenizers-cpp to speed up build & avoid compilation issues
+set(MLC_ENABLE_SENTENCEPIECE_TOKENIZER OFF CACHE BOOL "" FORCE)
 
 # Check for tokenizers-cpp directory
 if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/tokenizers-cpp/CMakeLists.txt")
@@ -45,6 +46,12 @@ set(VECTORDB_SOURCES
 add_library(vectordb_core STATIC
     ${VECTORDB_SOURCES}
 )
+
+if(MSVC)
+    target_compile_options(vectordb_core PRIVATE /W3 /O2)
+else()
+    target_compile_options(vectordb_core PRIVATE -O3 -Wall -Wextra)
+endif()
 
 target_include_directories(vectordb_core PUBLIC
     "${CMAKE_SOURCE_DIR}/include"
