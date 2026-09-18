@@ -2,7 +2,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <cstring>
-
+#include <functional>
 namespace vectordb {
 
 static void write_string(std::ostream& out, const std::string& str) {
