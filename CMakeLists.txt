@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VectorDB)
+project(VectorDB VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,52 +9,77 @@ set(ONNXRUNTIME_ROOT
     "${CMAKE_SOURCE_DIR}/third_party/onnxruntime"
 )
 
-# Loads the model's complete Hugging Face tokenizer.json at runtime.
+# MSVC configuration
 if(MSVC)
-    # SentencePiece/Abseil compile several sources into shared debug PDB files.
-    add_compile_options(/FS)
-    # The Rust tokenizer library is built against the dynamic MSVC runtime.
+    add_compile_options(/FS /W3 /O2)
     set(TOKENIZERS_CPP_MSVC_RUNTIME_LIBRARY MD CACHE STRING "" FORCE)
 endif()
+
 add_subdirectory(third_party/tokenizers-cpp EXCLUDE_FROM_ALL)
 
-add_executable(test_onnx
-    src/test_onnx.cpp
+# Core VectorDB Library
+set(VECTORDB_SOURCES
+    src/core/distance.cpp
+    src/core/thread_pool.cpp
+    src/core/metadata.cpp
+    src/index/flat_index.cpp
+    src/index/hnsw_index.cpp
+    src/storage/serializer.cpp
+    src/storage/wal.cpp
+    src/embedding/embedder.cpp
+    src/engine/collection.cpp
+    src/engine/database.cpp
 )
 
-target_include_directories(test_onnx PRIVATE
+add_library(vectordb_core STATIC
+    ${VECTORDB_SOURCES}
+)
+
+target_include_directories(vectordb_core PUBLIC
+    "${CMAKE_SOURCE_DIR}/include"
     "${ONNXRUNTIME_ROOT}/include"
 )
 
-target_link_libraries(test_onnx PRIVATE
+target_link_libraries(vectordb_core PUBLIC
     "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
     tokenizers_cpp
 )
 
-target_compile_definitions(test_onnx PRIVATE
-    PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-)
-
 if(MSVC)
-    # Match the Rust tokenizer library's runtime even in the Debug configuration.
-    set_property(TARGET test_onnx PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    set_property(TARGET vectordb_core PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 
-# Ensure the executable loads the DLL that matches the headers and import library.
-add_custom_command(TARGET test_onnx POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
-        "$<TARGET_FILE_DIR:test_onnx>/onnxruntime.dll"
-)
+# Macro to configure executable targets
+macro(add_vectordb_executable target_name source_file)
+    add_executable(${target_name} ${source_file})
+    target_link_libraries(${target_name} PRIVATE vectordb_core)
+    if(MSVC)
+        set_property(TARGET ${target_name} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    endif()
+    add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
+            "$<TARGET_FILE_DIR:${target_name}>/onnxruntime.dll"
+    )
+endmacro()
 
-add_executable(inspect_model
-    examples/inspect_model.cpp
-)
+# CLI and Server Executables
+add_vectordb_executable(vectordb_cli src/cli/main_cli.cpp)
+add_vectordb_executable(vectordb_server src/server/http_server.cpp)
+if(WIN32)
+    target_link_libraries(vectordb_server PRIVATE ws2_32)
+endif()
 
-target_include_directories(inspect_model PRIVATE
-    "${ONNXRUNTIME_ROOT}/include"
-)
+# Test Suite
+add_vectordb_executable(test_distance tests/test_distance.cpp)
+add_vectordb_executable(test_metadata tests/test_metadata.cpp)
+add_vectordb_executable(test_flat_index tests/test_flat_index.cpp)
+add_vectordb_executable(test_hnsw_index tests/test_hnsw_index.cpp)
+add_vectordb_executable(test_database tests/test_database.cpp)
+add_vectordb_executable(test_benchmark tests/test_benchmark.cpp)
 
-target_link_libraries(inspect_model PRIVATE
-    "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
-)
+# Legacy / Verification targets
+add_vectordb_executable(test_onnx src/test_onnx.cpp)
+target_compile_definitions(test_onnx PRIVATE PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+add_vectordb_executable(inspect_model examples/inspect_model.cpp)
