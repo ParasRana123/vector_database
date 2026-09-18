@@ -3,63 +3,260 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MiniLM Vector Search</title>
+  <title>VectorDB - MiniLM Semantic Vector Search</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Inline Fallback Styles ensuring 100% style coverage on Vercel */
+    :root {
+      --bg-primary: #0a0d14;
+      --bg-secondary: #111622;
+      --bg-card: #151c2c;
+      --bg-card-hover: #1b2438;
+      --bg-input: #0e131f;
+      --border-subtle: #202b3f;
+      --border-accent: #3b82f6;
+      --border-focus: #60a5fa;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-primary: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      --accent-emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.25);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-full: 9999px;
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      --shadow-glow: 0 0 20px -2px var(--accent-glow);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      background-image: 
+        radial-gradient(circle at 15% 10%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
+      background-attachment: fixed;
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1080px; margin: 0 auto; padding: 48px 24px 80px; }
+    header { margin-bottom: 36px; }
+    .eyebrow-container { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #60a5fa; background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: var(--radius-full);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .backend-badge {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; padding: 4px 10px;
+      border-radius: var(--radius-full); display: inline-flex; align-items: center; gap: 6px;
+    }
+    .backend-badge.remote { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .backend-badge.local { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .pulse-dot {
+      width: 7px; height: 7px; border-radius: 50%; background-color: currentColor;
+      box-shadow: 0 0 8px currentColor; animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px;
+    }
+    .subtitle { color: var(--text-secondary); font-size: 1.05rem; max-width: 680px; }
+    .notice {
+      margin: 20px 0; padding: 14px 18px; border-radius: var(--radius-md); font-size: 0.92rem;
+      font-weight: 500; display: flex; align-items: center; gap: 10px;
+    }
+    .notice.success { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; }
+    .notice.error { background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.35); color: #fb7185; }
+    .notice.info { background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #60a5fa; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+    article, section.card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+      padding: 26px; box-shadow: var(--shadow-card); backdrop-filter: blur(12px);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    article:hover, section.card:hover { border-color: rgba(96, 165, 250, 0.3); }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    h2 { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; padding: 2px 8px;
+      border-radius: var(--radius-full); background: rgba(255, 255, 255, 0.06); color: var(--text-secondary);
+    }
+    textarea {
+      width: 100%; min-height: 110px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+      background: var(--bg-input); color: var(--text-primary); padding: 14px 16px; font-family: inherit;
+      font-size: 0.95rem; line-height: 1.5; resize: vertical; outline: none; transition: border-color 0.2s ease;
+    }
+    textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+    textarea::placeholder { color: var(--text-muted); }
+    .btn-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+    button {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: none;
+      border-radius: var(--radius-sm); background: var(--accent-gradient); color: #ffffff;
+      padding: 11px 18px; font-family: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      box-shadow: var(--shadow-glow); transition: opacity 0.2s ease, transform 0.15s ease;
+    }
+    button:hover { opacity: 0.95; transform: translateY(-1px); }
+    button.secondary { background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--text-secondary); box-shadow: none; }
+    button.secondary:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    button.link { background: transparent; color: #60a5fa; padding: 0; margin: 0; font-size: 0.85rem; box-shadow: none; text-decoration: underline; }
+    .full-width-section { margin-top: 24px; }
+    .documents, .results { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .doc-item {
+      display: flex; align-items: flex-start; gap: 14px; background: var(--bg-input);
+      border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 18px;
+    }
+    .doc-id {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 700; color: #60a5fa;
+      background: rgba(59, 130, 246, 0.12); padding: 3px 8px; border-radius: var(--radius-sm);
+    }
+    .doc-content { flex: 1; color: var(--text-primary); font-size: 0.94rem; }
+    .result-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+      padding: 16px 20px; transition: transform 0.15s ease, border-color 0.2s ease;
+    }
+    .result-item:hover { transform: translateX(3px); border-color: rgba(16, 185, 129, 0.4); }
+    .result-info { display: flex; flex-direction: column; gap: 4px; }
+    .result-header { display: flex; align-items: center; gap: 10px; }
+    .score-badge { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 90px; }
+    .score-val { font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: #34d399; }
+    .score-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+    .empty-state {
+      color: var(--text-muted); font-size: 0.92rem; padding: 24px; text-align: center;
+      background: rgba(14, 19, 31, 0.5); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);
+    }
+    footer { margin-top: 48px; text-align: center; color: var(--text-muted); font-size: 0.82rem; border-top: 1px solid var(--border-subtle); padding-top: 24px; }
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+      main { padding: 32px 16px; }
+      .result-item { flex-direction: column; align-items: flex-start; }
+      .score-badge { align-items: flex-start; flex-direction: row; gap: 8px; }
+    }
+  </style>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">LOCAL VECTOR DATABASE</p>
-      <h1>MiniLM similarity search</h1>
-      <p>Add custom texts, then search for the closest meanings using 384-dimensional MiniLM embeddings.</p>
+      <div class="eyebrow-container">
+        <span class="eyebrow">⚡ VECTOR DATABASE C++</span>
+        {% if is_remote %}
+          <span class="backend-badge remote"><span class="pulse-dot"></span> Render C++ Backend Connected</span>
+        {% else %}
+          <span class="backend-badge local"><span class="pulse-dot"></span> Local Serverless Mode</span>
+        {% endif %}
+      </div>
+      <h1>MiniLM Semantic Vector Search</h1>
+      <p class="subtitle">Index text documents into 384-dimensional dense vectors and perform ultra-fast cosine similarity vector search.</p>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="notice {{ category }}">
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      {% endif %}
     {% endwith %}
 
-    <section class="grid">
+    <div class="grid">
       <article>
-        <h2>Add a document</h2>
+        <div class="card-header">
+          <h2>📄 Add Document</h2>
+          <span class="badge">Embedding Model: MiniLM-L6-v2</span>
+        </div>
         <form action="{{ url_for('add_document') }}" method="post">
-          <textarea name="text" placeholder="e.g. Neural networks learn patterns from data" required></textarea>
-          <button type="submit">Add text</button>
+          <textarea name="text" placeholder="Enter custom text (e.g. 'Neural networks learn rich representations from large datasets')" required></textarea>
+          <div class="btn-row">
+            <button type="submit">✨ Embed & Store</button>
+          </div>
         </form>
-        <form action="{{ url_for('load_example') }}" method="post" class="inline-form">
-          <button type="submit" class="secondary">Load the 3-document example</button>
+        <form action="{{ url_for('load_example') }}" method="post" style="margin-top: 12px;">
+          <button type="submit" class="secondary">⚡ Load 3 Example Documents</button>
         </form>
       </article>
 
       <article>
-        <h2>Search</h2>
+        <div class="card-header">
+          <h2>🔍 Semantic Search</h2>
+          <span class="badge">Metric: Cosine Similarity</span>
+        </div>
         <form action="{{ url_for('search') }}" method="post">
-          <textarea name="query" placeholder="Enter a query" required>{{ query }}</textarea>
-          <button type="submit">Find similar texts</button>
+          <textarea name="query" placeholder="Enter a search concept (e.g. 'artificial intelligence')" required>{{ query }}</textarea>
+          <div class="btn-row">
+            <button type="submit">🔎 Search Nearest Vectors</button>
+          </div>
         </form>
       </article>
-    </section>
+    </div>
 
-    <section>
-      <div class="section-title"><h2>Stored documents ({{ documents|length }})</h2>
-        {% if documents %}<form action="{{ url_for('clear_documents') }}" method="post"><button class="link" type="submit">Clear all</button></form>{% endif %}
+    {% if results is not none %}
+      <section class="card full-width-section">
+        <div class="card-header">
+          <h2>🎯 Similarity Results</h2>
+          <span class="badge">{{ results|length }} Nearest Matches</span>
+        </div>
+        {% if results %}
+          <ol class="results">
+            {% for result in results %}
+              <li class="result-item">
+                <div class="result-info">
+                  <div class="result-header">
+                    <span class="doc-id">ID: #{{ result.id }}</span>
+                  </div>
+                  <p class="result-text">{{ result.text }}</p>
+                </div>
+                <div class="score-badge">
+                  <span class="score-val">{{ '%.4f'|format(result.score) }}</span>
+                  <span class="score-label">Cosine Score</span>
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="empty-state">No matching documents found.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <section class="card full-width-section">
+      <div class="card-header">
+        <h2>📚 Stored Documents ({{ documents|length }})</h2>
+        {% if documents %}
+          <form action="{{ url_for('clear_documents') }}" method="post">
+            <button class="link" type="submit">Clear All</button>
+          </form>
+        {% endif %}
       </div>
       {% if documents %}
         <ol class="documents">
-          {% for document in documents %}<li><span>#{{ document.id }}</span>{{ document.text }}</li>{% endfor %}
-        </ol>
-      {% else %}<p class="empty">No documents yet. Add your own texts or load the example.</p>{% endif %}
-    </section>
-
-    {% if results is not none %}
-      <section>
-        <h2>Similarity results</h2>
-        <ol class="results">
-          {% for result in results %}
-            <li><div><span class="rank">#{{ result.id }}</span><p>{{ result.text }}</p></div><strong>{{ '%.3f'|format(result.score) }}</strong></li>
+          {% for document in documents %}
+            <li class="doc-item">
+              <span class="doc-id">#{{ document.id }}</span>
+              <div class="doc-content">{{ document.text }}</div>
+            </li>
           {% endfor %}
         </ol>
-      </section>
-    {% endif %}
+      {% else %}
+        <p class="empty-state">No documents indexed yet. Add your own text or click "Load 3 Example Documents".</p>
+      {% endif %}
+    </section>
+
+    <footer>
+      <p>VectorDB C++ Engine &bull; Custom HNSW Graph & Flat SIMD Indexing &bull; <a href="https://github.com/ParasRana123/vector_database" target="_blank">GitHub Repository</a></p>
+    </footer>
   </main>
 </body>
 </html>

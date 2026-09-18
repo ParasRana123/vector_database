@@ -7,15 +7,25 @@ from dataclasses import dataclass
 from pathlib import Path
 import requests
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, url_for, send_from_directory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EXECUTABLE = PROJECT_ROOT / "build" / "Release" / "test_onnx.exe"
 EMBEDDING_EXECUTABLE = Path(os.environ.get("VECTOR_DB_EXECUTABLE", DEFAULT_EXECUTABLE))
-VECTOR_DB_API_URL = os.environ.get("VECTOR_DB_API_URL", "").rstrip("/")
+VECTOR_DB_API_URL = (
+    os.environ.get("VECTOR_DB_API_URL")
+    or os.environ.get("VECTORDB_BACKEND_URL")
+    or ""
+).rstrip("/")
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "local-vector-db-demo")
+
+
+@app.route("/static/<path:filename>")
+def custom_static(filename: str):
+    static_dir = Path(__file__).resolve().parent / "static"
+    return send_from_directory(str(static_dir), filename)
 
 
 @dataclass
@@ -77,7 +87,13 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 @app.get("/")
 def index():
-    return render_template("index.html", documents=documents, results=None, query="machine learning")
+    return render_template(
+        "index.html",
+        documents=documents,
+        results=None,
+        query="machine learning",
+        is_remote=is_remote_backend()
+    )
 
 
 @app.post("/documents")
@@ -98,7 +114,7 @@ def add_document():
             if resp.status_code == 200:
                 documents.append(Document(next_document_id, text, []))
                 next_document_id += 1
-                flash("Document added to remote C++ VectorDB (Render).", "success")
+                flash("Document indexed in remote C++ VectorDB (Render).", "success")
             else:
                 flash(f"Remote DB error: {resp.text}", "error")
         except Exception as error:
@@ -119,7 +135,13 @@ def search():
     query = request.form.get("query", "").strip()
     if not query:
         flash("Enter a query to search.", "error")
-        return render_template("index.html", documents=documents, results=None, query=query)
+        return render_template(
+            "index.html",
+            documents=documents,
+            results=None,
+            query=query,
+            is_remote=is_remote_backend()
+        )
 
     if is_remote_backend():
         try:
@@ -136,16 +158,34 @@ def search():
                 ]
                 latency = data.get("latency_ms", 0.0)
                 flash(f"Search completed in {latency:.2f} ms via C++ VectorDB on Render.", "info")
-                return render_template("index.html", documents=documents, results=results, query=query)
+                return render_template(
+                    "index.html",
+                    documents=documents,
+                    results=results,
+                    query=query,
+                    is_remote=is_remote_backend()
+                )
             else:
                 flash(f"Remote search error: {resp.text}", "error")
         except Exception as error:
             flash(f"Failed to connect to remote VectorDB: {error}", "error")
-        return render_template("index.html", documents=documents, results=None, query=query)
+        return render_template(
+            "index.html",
+            documents=documents,
+            results=None,
+            query=query,
+            is_remote=is_remote_backend()
+        )
     else:
         if not documents:
             flash("Add at least one document before searching.", "error")
-            return render_template("index.html", documents=documents, results=None, query=query)
+            return render_template(
+                "index.html",
+                documents=documents,
+                results=None,
+                query=query,
+                is_remote=is_remote_backend()
+            )
         try:
             query_embedding = embed_local(query)
             results = sorted(
@@ -157,10 +197,22 @@ def search():
                 key=lambda result: result["score"],
                 reverse=True,
             )
-            return render_template("index.html", documents=documents, results=results, query=query)
+            return render_template(
+                "index.html",
+                documents=documents,
+                results=results,
+                query=query,
+                is_remote=is_remote_backend()
+            )
         except Exception as error:
             flash(str(error), "error")
-            return render_template("index.html", documents=documents, results=None, query=query)
+            return render_template(
+                "index.html",
+                documents=documents,
+                results=None,
+                query=query,
+                is_remote=is_remote_backend()
+            )
 
 
 @app.post("/example")
