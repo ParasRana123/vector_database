@@ -50,21 +50,21 @@ void test_metadata_filters() {
     doc2.set_int("year", 2023);
     doc2.set_double("price", 49.99);
 
-    auto f_cat = filter::eq("category", "physics");
+    auto f_cat = filter::eq("category", std::string("physics"));
     assert(f_cat->matches(doc1) == true);
     assert(f_cat->matches(doc2) == false);
 
-    auto f_year = filter::gte("year", 2022);
+    auto f_year = filter::gte("year", int64_t(2022));
     assert(f_year->matches(doc1) == false);
     assert(f_year->matches(doc2) == true);
 
-    auto f_in = filter::in("category", {"physics", "chemistry", "math"});
+    auto f_in = filter::in("category", {std::string("physics"), std::string("chemistry"), std::string("math")});
     assert(f_in->matches(doc1) == true);
     assert(f_in->matches(doc2) == false);
 
     // AND composite filter
     auto f_and = filter::all_of({
-        filter::eq("category", "biology"),
+        filter::eq("category", std::string("biology")),
         filter::gt("price", 30.0)
     });
     assert(f_and->matches(doc1) == false);
@@ -72,14 +72,14 @@ void test_metadata_filters() {
 
     // OR composite filter
     auto f_or = filter::any_of({
-        filter::eq("category", "physics"),
-        filter::eq("category", "biology")
+        filter::eq("category", std::string("physics")),
+        filter::eq("category", std::string("biology"))
     });
     assert(f_or->matches(doc1) == true);
     assert(f_or->matches(doc2) == true);
 
     // NOT filter
-    auto f_not = filter::not_filter(filter::eq("category", "physics"));
+    auto f_not = filter::not_filter(filter::eq("category", std::string("physics")));
     assert(f_not->matches(doc1) == false);
     assert(f_not->matches(doc2) == true);
 
