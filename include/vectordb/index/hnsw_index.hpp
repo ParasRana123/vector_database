@@ -8,15 +8,17 @@
 
 namespace vectordb {
 
+struct HNSWParams {
+    size_t M{16};                   // Max edges per node at level > 0 (level 0 has 2*M)
+    size_t ef_construction{200};     // Search queue size during build
+    size_t ef_search{50};           // Search queue size during query
+    double mL{1.0 / std::log(16.0)};// Level multiplier
+    uint32_t random_seed{100};
+};
+
 class HNSWIndex : public VectorIndex {
 public:
-    struct HNSWParams {
-        size_t M{16};                   // Max edges per node at level > 0 (level 0 has 2*M)
-        size_t ef_construction{200};     // Search queue size during build
-        size_t ef_search{50};           // Search queue size during query
-        double mL{1.0 / std::log(16.0)};// Level multiplier
-        uint32_t random_seed{100};
-    };
+    using HNSWParams = vectordb::HNSWParams;
 
     HNSWIndex(size_t dimension, DistanceMetric metric, HNSWParams params = HNSWParams{});
 
