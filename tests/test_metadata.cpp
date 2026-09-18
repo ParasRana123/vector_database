@@ -58,7 +58,7 @@ void test_metadata_filters() {
     assert(f_year->matches(doc1) == false);
     assert(f_year->matches(doc2) == true);
 
-    auto f_in = filter::in("category", {std::string("physics"), std::string("chemistry"), std::string("math")});
+    auto f_in = filter::in("category", std::vector<std::string>{"physics", "chemistry", "math"});
     assert(f_in->matches(doc1) == true);
     assert(f_in->matches(doc2) == false);
 

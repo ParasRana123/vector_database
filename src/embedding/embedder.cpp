@@ -1,4 +1,5 @@
 #include "vectordb/embedding/embedder.hpp"
+#include "vectordb/embedding/tokenizer.hpp"
 #include "vectordb/core/distance.hpp"
 #include <iostream>
 #include <fstream>
@@ -8,15 +9,12 @@
 #include <array>
 #include <random>
 
-#if defined(HAS_ONNXRUNTIME) || 1
 #include <onnxruntime_cxx_api.h>
-#include <tokenizers_cpp.h>
-#endif
 
 namespace vectordb {
 
 struct TextEmbedder::Impl {
-    std::unique_ptr<tokenizers::Tokenizer> tokenizer;
+    BertTokenizer tokenizer;
     std::unique_ptr<Ort::Env> env;
     std::unique_ptr<Ort::Session> session;
     std::vector<std::string> input_names_owned;
@@ -28,33 +26,36 @@ struct TextEmbedder::Impl {
 TextEmbedder::TextEmbedder() : impl_(std::make_unique<Impl>()) {}
 TextEmbedder::~TextEmbedder() = default;
 
-static std::string read_blob_file(const std::filesystem::path& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return "";
-    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-}
-
 bool TextEmbedder::load(const std::string& model_dir_str) {
     std::lock_guard<std::mutex> lock(mutex_);
     try {
         std::filesystem::path model_dir(model_dir_str);
+        auto vocab_path = model_dir / "vocab.txt";
         auto tokenizer_path = model_dir / "tokenizer.json";
         auto onnx_path = model_dir / "onnx" / "all-MiniLM-L6-v2.onnx";
 
-        if (!std::filesystem::exists(tokenizer_path) || !std::filesystem::exists(onnx_path)) {
-            // Check direct onnx file
+        if (!std::filesystem::exists(onnx_path)) {
             onnx_path = model_dir / "all-MiniLM-L6-v2.onnx";
-            if (!std::filesystem::exists(tokenizer_path) || !std::filesystem::exists(onnx_path)) {
-                std::cerr << "[TextEmbedder] Warning: Model files not found in " << model_dir_str << "\n";
+            if (!std::filesystem::exists(onnx_path)) {
+                std::cerr << "[TextEmbedder] Warning: ONNX model not found in " << model_dir_str << "\n";
                 is_loaded_ = false;
                 return false;
             }
         }
 
-        std::string json_blob = read_blob_file(tokenizer_path);
-        if (json_blob.empty()) return false;
+        bool tok_loaded = false;
+        if (std::filesystem::exists(vocab_path)) {
+            tok_loaded = impl_->tokenizer.load_vocab_file(vocab_path.string());
+        } else if (std::filesystem::exists(tokenizer_path)) {
+            tok_loaded = impl_->tokenizer.load_json_file(tokenizer_path.string());
+        }
 
-        impl_->tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_blob);
+        if (!tok_loaded) {
+            std::cerr << "[TextEmbedder] Warning: Could not load vocab or tokenizer.json in " << model_dir_str << "\n";
+            is_loaded_ = false;
+            return false;
+        }
+
         impl_->env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "VectorDBEmbedder");
 
         Ort::SessionOptions options;
@@ -106,20 +107,12 @@ static Vector generate_fallback_embedding(const std::string& text, size_t dim) {
 
 Vector TextEmbedder::embed(const std::string& text) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!is_loaded_ || !impl_->session || !impl_->tokenizer) {
+    if (!is_loaded_ || !impl_->session || !impl_->tokenizer.is_loaded()) {
         return generate_fallback_embedding(text, dimension_);
     }
 
     try {
-        constexpr size_t kMaxSeqLen = 512;
-        auto wordpiece_ids = impl_->tokenizer->Encode(text);
-        wordpiece_ids.resize(std::min(wordpiece_ids.size(), kMaxSeqLen - 2));
-
-        std::vector<int64_t> ids;
-        ids.reserve(wordpiece_ids.size() + 2);
-        ids.push_back(101); // [CLS]
-        for (int32_t id : wordpiece_ids) ids.push_back(id);
-        ids.push_back(102); // [SEP]
+        auto ids = impl_->tokenizer.encode(text, 512);
 
         std::vector<int64_t> mask(ids.size(), 1);
         std::vector<int64_t> type_ids(ids.size(), 0);
