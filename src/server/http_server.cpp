@@ -11,6 +11,7 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 using socket_t = SOCKET;
+using socklen_t = int;
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -71,7 +72,7 @@ public:
 
         while (true) {
             sockaddr_in client_addr{};
-            int addrlen = sizeof(client_addr);
+            socklen_t addrlen = sizeof(client_addr);
             socket_t client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &addrlen);
             if (client_fd == INVALID_SOCKET) continue;
 
