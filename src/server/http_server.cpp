@@ -101,6 +101,31 @@ private:
         std::string method, path, version;
         ss >> method >> path >> version;
 
+        // Clean path (strip query params and trailing slash)
+        std::string clean_path = path;
+        size_t qpos = clean_path.find('?');
+        if (qpos != std::string::npos) {
+            clean_path = clean_path.substr(0, qpos);
+        }
+        while (clean_path.size() > 1 && clean_path.back() == '/') {
+            clean_path.pop_back();
+        }
+
+        // Handle CORS Preflight (OPTIONS)
+        if (method == "OPTIONS") {
+            std::ostringstream response;
+            response << "HTTP/1.1 200 OK\r\n"
+                     << "Access-Control-Allow-Origin: *\r\n"
+                     << "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                     << "Access-Control-Allow-Headers: Content-Type, Authorization, Accept\r\n"
+                     << "Content-Length: 0\r\n"
+                     << "Connection: close\r\n\r\n";
+            std::string resp_str = response.str();
+            send(client_fd, resp_str.data(), static_cast<int>(resp_str.size()), 0);
+            closesocket(client_fd);
+            return;
+        }
+
         // Parse body if POST
         std::string body;
         size_t header_end = request.find("\r\n\r\n");
@@ -111,27 +136,49 @@ private:
         std::string response_json = "{}";
         int status_code = 200;
 
-        if (method == "GET" && path == "/api/stats") {
+        if (method == "GET" && (clean_path.empty() || clean_path == "/" || clean_path == "/health" || clean_path == "/status" || clean_path == "/api" || clean_path == "/api/health")) {
+            auto stats = db_.get_stats();
+            std::ostringstream out;
+            out << "{"
+                << "\"status\":\"online\","
+                << "\"engine\":\"VectorDB C++ v1.0\","
+                << "\"message\":\"VectorDB REST API is operational and healthy\","
+                << "\"stats\":{"
+                << "\"total_collections\":" << stats.total_collections << ","
+                << "\"total_documents\":" << stats.total_documents << ","
+                << "\"embedder_ready\":" << (stats.embedder_ready ? "true" : "false")
+                << "},"
+                << "\"endpoints\":{"
+                << "\"GET /\":\"Server status & API documentation\","
+                << "\"GET /health\":\"Service health check\","
+                << "\"GET /api/stats\":\"Database metrics & document counts\","
+                << "\"GET /api/collections\":\"List all collections & schemas\","
+                << "\"POST /api/insert\":\"Insert document {\\\"collection\\\":\\\"default\\\",\\\"id\\\":1,\\\"text\\\":\\\"...\\\"}\","
+                << "\"POST /api/search\":\"Semantic search {\\\"collection\\\":\\\"default\\\",\\\"query\\\":\\\"...\\\",\\\"top_k\\\":5}\""
+                << "}"
+                << "}";
+            response_json = out.str();
+        } else if (method == "GET" && (clean_path == "/api/stats" || clean_path == "/stats")) {
             auto stats = db_.get_stats();
             std::ostringstream out;
             out << "{\"total_collections\":" << stats.total_collections
                 << ",\"total_documents\":" << stats.total_documents
                 << ",\"embedder_ready\":" << (stats.embedder_ready ? "true" : "false") << "}";
             response_json = out.str();
-        } else if (method == "GET" && path == "/api/collections") {
+        } else if (method == "GET" && (clean_path == "/api/collections" || clean_path == "/collections")) {
             auto colls = db_.list_collections();
             std::ostringstream out;
             out << "[";
             for (size_t i = 0; i < colls.size(); ++i) {
                 if (i > 0) out << ",";
                 auto c = db_.get_collection(colls[i]);
-                out << "{\"name\":\"" << colls[i] << "\",\"size\":" << c->size()
-                    << ",\"dimension\":" << c->dimension()
-                    << ",\"metric\":\"" << distance_metric_to_string(c->metric()) << "\"}";
+                out << "{\"name\":\"" << colls[i] << "\",\"size\":" << (c ? c->size() : 0)
+                    << ",\"dimension\":" << (c ? c->dimension() : 0)
+                    << ",\"metric\":\"" << (c ? distance_metric_to_string(c->metric()) : "COSINE") << "\"}";
             }
             out << "]";
             response_json = out.str();
-        } else if (method == "POST" && path == "/api/insert") {
+        } else if (method == "POST" && (clean_path == "/api/insert" || clean_path == "/insert")) {
             Metadata meta = Metadata::from_json(body);
             auto text_opt = meta.get_string("text");
             auto id_opt = meta.get_int("id");
@@ -145,22 +192,46 @@ private:
                 status_code = 400;
                 response_json = "{\"error\":\"Missing 'id' or 'text'\"}";
             }
-        } else if (method == "POST" && path == "/api/search") {
-            Metadata meta = Metadata::from_json(body);
-            auto query_opt = meta.get_string("query");
-            auto top_k_opt = meta.get_int("top_k");
-            auto coll_opt = meta.get_string("collection");
-            std::string coll_name = coll_opt ? *coll_opt : "default";
-            size_t top_k = top_k_opt ? static_cast<size_t>(*top_k_opt) : 5;
+        } else if ((method == "POST" || method == "GET") && (clean_path == "/api/search" || clean_path == "/search")) {
+            std::string query_text;
+            size_t top_k = 5;
+            std::string coll_name = "default";
 
-            if (query_opt) {
+            if (method == "POST") {
+                Metadata meta = Metadata::from_json(body);
+                auto query_opt = meta.get_string("query");
+                auto top_k_opt = meta.get_int("top_k");
+                auto coll_opt = meta.get_string("collection");
+                if (query_opt) query_text = *query_opt;
+                if (top_k_opt) top_k = static_cast<size_t>(*top_k_opt);
+                if (coll_opt) coll_name = *coll_opt;
+            } else if (method == "GET") {
+                size_t q_idx = path.find("q=");
+                if (q_idx == std::string::npos) q_idx = path.find("query=");
+                if (q_idx != std::string::npos) {
+                    size_t start = path.find('=', q_idx) + 1;
+                    size_t end = path.find('&', start);
+                    query_text = (end == std::string::npos) ? path.substr(start) : path.substr(start, end - start);
+                    std::string decoded;
+                    for (size_t i = 0; i < query_text.size(); ++i) {
+                        if (query_text[i] == '+') decoded += ' ';
+                        else if (query_text[i] == '%' && i + 2 < query_text.size() && query_text[i+1] == '2' && query_text[i+2] == '0') {
+                            decoded += ' ';
+                            i += 2;
+                        } else decoded += query_text[i];
+                    }
+                    query_text = decoded;
+                }
+            }
+
+            if (!query_text.empty()) {
                 auto start = std::chrono::high_resolution_clock::now();
-                auto results = db_.search_text(coll_name, *query_opt, top_k);
+                auto results = db_.search_text(coll_name, query_text, top_k);
                 auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::high_resolution_clock::now() - start).count();
 
                 std::ostringstream out;
-                out << "{\"query\":\"" << *query_opt << "\",\"latency_ms\":" << (elapsed / 1000.0)
+                out << "{\"query\":\"" << query_text << "\",\"latency_ms\":" << (elapsed / 1000.0)
                     << ",\"results\":[";
                 for (size_t i = 0; i < results.size(); ++i) {
                     if (i > 0) out << ",";
@@ -176,13 +247,15 @@ private:
             }
         } else {
             status_code = 404;
-            response_json = "{\"error\":\"Endpoint not found\"}";
+            response_json = "{\"error\":\"Endpoint not found\",\"path\":\"" + path + "\"}";
         }
 
         std::ostringstream response;
         response << "HTTP/1.1 " << status_code << " OK\r\n"
                  << "Content-Type: application/json\r\n"
                  << "Access-Control-Allow-Origin: *\r\n"
+                 << "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                 << "Access-Control-Allow-Headers: Content-Type, Authorization, Accept\r\n"
                  << "Content-Length: " << response_json.size() << "\r\n"
                  << "Connection: close\r\n\r\n"
                  << response_json;
