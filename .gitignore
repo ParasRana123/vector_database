@@ -1,3 +1,6 @@
 /third_party
 /build
 /models
+__pycache__/
+*.pyc
+.pytest_cache/
