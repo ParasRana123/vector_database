@@ -1,5 +1,5 @@
 # =========================================================================
-# Stage 1: Build C++ VectorDB with CMake, GCC & Cargo/Rust on Linux
+# Stage 1: Build C++ VectorDB Server on Linux (Lightweight & Fast)
 # =========================================================================
 FROM ubuntu:22.04 AS builder
 
@@ -7,14 +7,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
-    git \
     wget \
-    curl \
     tar \
     ca-certificates \
-    cargo \
-    rustc \
-    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -28,21 +23,15 @@ RUN mkdir -p /app/third_party/onnxruntime/include /app/third_party/onnxruntime/l
     cp /tmp/onnxruntime-linux-x64-1.17.1/lib/* /app/third_party/onnxruntime/lib/ && \
     rm -rf /tmp/ort*
 
-# 2. Clone tokenizers-cpp with submodules if not already bundled
-RUN if [ ! -f /app/third_party/tokenizers-cpp/CMakeLists.txt ]; then \
-    rm -rf /app/third_party/tokenizers-cpp && \
-    git clone --recursive https://github.com/mlc-ai/tokenizers-cpp.git /app/third_party/tokenizers-cpp; \
-    fi
-
-# 3. Download all-MiniLM-L6-v2 ONNX model and tokenizer if not already present
+# 2. Download all-MiniLM-L6-v2 ONNX model and tokenizer if not already present
 RUN if [ ! -f /app/models/all-MiniLM-L6-v2/tokenizer.json ]; then \
     mkdir -p /app/models/all-MiniLM-L6-v2/onnx && \
     wget -q https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/raw/main/tokenizer.json -O /app/models/all-MiniLM-L6-v2/tokenizer.json && \
     wget -q https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx -O /app/models/all-MiniLM-L6-v2/onnx/all-MiniLM-L6-v2.onnx; \
     fi
 
-# 4. Build C++ VectorDB server binary (disabling sentencepiece to avoid warnings and speed up build)
-RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DMLC_ENABLE_SENTENCEPIECE_TOKENIZER=OFF && \
+# 3. Build C++ VectorDB server binary
+RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --config Release --target vectordb_server -j$(nproc)
 
 # =========================================================================

@@ -14,19 +14,6 @@ set(ONNXRUNTIME_ROOT
 # MSVC specific configuration
 if(MSVC)
     add_compile_options(/FS)
-    set(TOKENIZERS_CPP_MSVC_RUNTIME_LIBRARY MD CACHE STRING "" FORCE)
-endif()
-
-# Disable SentencePiece in tokenizers-cpp to speed up build & avoid compilation issues
-set(MLC_ENABLE_SENTENCEPIECE_TOKENIZER OFF CACHE BOOL "" FORCE)
-
-# Check for tokenizers-cpp directory
-if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/tokenizers-cpp/CMakeLists.txt")
-    add_subdirectory(third_party/tokenizers-cpp EXCLUDE_FROM_ALL)
-    set(HAS_TOKENIZERS_CPP TRUE)
-else()
-    set(HAS_TOKENIZERS_CPP FALSE)
-    message(STATUS "tokenizers-cpp not found; tokenizer support will use fallback embedder if needed.")
 endif()
 
 # Core VectorDB Library
@@ -72,11 +59,6 @@ else()
     endif()
 endif()
 
-if(HAS_TOKENIZERS_CPP)
-    target_link_libraries(vectordb_core PUBLIC tokenizers_cpp)
-    target_compile_definitions(vectordb_core PUBLIC HAS_TOKENIZERS_CPP=1)
-endif()
-
 if(MSVC)
     set_property(TARGET vectordb_core PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
@@ -111,12 +93,6 @@ add_vectordb_executable(test_flat_index tests/test_flat_index.cpp)
 add_vectordb_executable(test_hnsw_index tests/test_hnsw_index.cpp)
 add_vectordb_executable(test_database tests/test_database.cpp)
 add_vectordb_executable(test_benchmark tests/test_benchmark.cpp)
-
-# Legacy / Verification targets
-if(EXISTS "${CMAKE_SOURCE_DIR}/src/test_onnx.cpp" AND HAS_TOKENIZERS_CPP)
-    add_vectordb_executable(test_onnx src/test_onnx.cpp)
-    target_compile_definitions(test_onnx PRIVATE PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/examples/inspect_model.cpp")
     add_vectordb_executable(inspect_model examples/inspect_model.cpp)
