@@ -35,10 +35,10 @@ bool Database::create_collection(CollectionConfig coll_config) {
     collections_[coll_config.name] = coll;
 
     if (config_.enable_wal && !config_.data_dir.empty()) {
+        recover_wal(coll_config.name, *coll);
         std::string wal_path = (std::filesystem::path(config_.data_dir) / (coll_config.name + ".wal")).string();
         auto wal = std::make_unique<WAL>(wal_path);
         wal->open();
-        recover_wal(coll_config.name, *coll);
         wals_[coll_config.name] = std::move(wal);
     }
 
