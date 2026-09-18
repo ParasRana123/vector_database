@@ -1,5 +1,5 @@
 # =========================================================================
-# Stage 1: Build C++ VectorDB with CMake & GCC on Linux
+# Stage 1: Build C++ VectorDB with CMake, GCC & Cargo/Rust on Linux
 # =========================================================================
 FROM ubuntu:22.04 AS builder
 
@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     tar \
     ca-certificates \
+    cargo \
+    rustc \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,8 +41,8 @@ RUN if [ ! -f /app/models/all-MiniLM-L6-v2/tokenizer.json ]; then \
     wget -q https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx -O /app/models/all-MiniLM-L6-v2/onnx/all-MiniLM-L6-v2.onnx; \
     fi
 
-# 4. Build C++ VectorDB server binary
-RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release && \
+# 4. Build C++ VectorDB server binary (disabling sentencepiece to avoid warnings and speed up build)
+RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DMLC_ENABLE_SENTENCEPIECE_TOKENIZER=OFF && \
     cmake --build build --config Release --target vectordb_server -j$(nproc)
 
 # =========================================================================
