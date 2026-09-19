@@ -86,11 +86,34 @@ void test_metadata_filters() {
     std::cout << "[PASS] test_metadata_filters\n";
 }
 
+void test_metadata_json_edge_cases() {
+    std::string json = "{\n"
+                       "  \"query\": \"deep learning & neural networks\",\n"
+                       "  \"top_k\": 10,\n"
+                       "  \"null_val\": null,\n"
+                       "  \"tags\": [\"ai\", \"ml\", \"vector\"],\n"
+                       "  \"nested\": {\"key\": \"value\"},\n"
+                       "  \"collection\": \"documents\"\n"
+                       "}";
+    Metadata meta = Metadata::from_json(json);
+    assert(meta.get_string("query").has_value());
+    assert(meta.get_string("query").value() == "deep learning & neural networks");
+    assert(meta.get_int("top_k").value() == 10);
+    assert(meta.get_string("collection").value() == "documents");
+
+    // Malformed JSON should not hang or crash
+    Metadata empty = Metadata::from_json("{ malformed, \"query\": \"test\" }");
+    assert(empty.has("query"));
+
+    std::cout << "[PASS] test_metadata_json_edge_cases\n";
+}
+
 int main() {
     std::cout << "--- Running Metadata & Filter Tests ---\n";
     test_metadata_basic();
     test_metadata_json_roundtrip();
     test_metadata_filters();
+    test_metadata_json_edge_cases();
     std::cout << "All metadata and filter tests passed successfully!\n";
     return 0;
 }

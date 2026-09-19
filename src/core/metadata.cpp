@@ -128,6 +128,9 @@ static std::string parse_string_token(const std::string& s, size_t& pos) {
             if (s[pos] == 'n') res += '\n';
             else if (s[pos] == 't') res += '\t';
             else if (s[pos] == 'r') res += '\r';
+            else if (s[pos] == '"') res += '"';
+            else if (s[pos] == '\\') res += '\\';
+            else if (s[pos] == '/') res += '/';
             else res += s[pos];
         } else {
             res += s[pos];
@@ -149,6 +152,11 @@ Metadata Metadata::from_json(const std::string& json_str) {
         skip_ws(json_str, pos);
         if (pos >= json_str.size() || json_str[pos] == '}') break;
 
+        if (json_str[pos] != '"') {
+            ++pos;
+            continue;
+        }
+
         std::string key = parse_string_token(json_str, pos);
         skip_ws(json_str, pos);
         if (pos < json_str.size() && json_str[pos] == ':') ++pos;
@@ -165,8 +173,36 @@ Metadata Metadata::from_json(const std::string& json_str) {
         } else if (json_str.substr(pos, 5) == "false") {
             meta.set_bool(key, false);
             pos += 5;
+        } else if (json_str.substr(pos, 4) == "null") {
+            pos += 4;
+        } else if (json_str[pos] == '{') {
+            // Skip nested object
+            int depth = 1;
+            ++pos;
+            while (pos < json_str.size() && depth > 0) {
+                if (json_str[pos] == '"') {
+                    parse_string_token(json_str, pos);
+                    continue;
+                }
+                if (json_str[pos] == '{') ++depth;
+                else if (json_str[pos] == '}') --depth;
+                ++pos;
+            }
+        } else if (json_str[pos] == '[') {
+            // Skip array
+            int depth = 1;
+            ++pos;
+            while (pos < json_str.size() && depth > 0) {
+                if (json_str[pos] == '"') {
+                    parse_string_token(json_str, pos);
+                    continue;
+                }
+                if (json_str[pos] == '[') ++depth;
+                else if (json_str[pos] == ']') --depth;
+                ++pos;
+            }
         } else {
-            // numeric
+            // numeric or other token
             size_t start = pos;
             bool is_double = false;
             while (pos < json_str.size() && (std::isdigit(static_cast<unsigned char>(json_str[pos])) ||
@@ -174,13 +210,18 @@ Metadata Metadata::from_json(const std::string& json_str) {
                 if (json_str[pos] == '.' || json_str[pos] == 'e' || json_str[pos] == 'E') is_double = true;
                 ++pos;
             }
-            std::string num_str = json_str.substr(start, pos - start);
-            if (!num_str.empty()) {
-                if (is_double) {
-                    meta.set_double(key, std::stod(num_str));
-                } else {
-                    meta.set_int(key, std::stoll(num_str));
-                }
+            if (pos > start) {
+                std::string num_str = json_str.substr(start, pos - start);
+                try {
+                    if (is_double) {
+                        meta.set_double(key, std::stod(num_str));
+                    } else {
+                        meta.set_int(key, std::stoll(num_str));
+                    }
+                } catch (...) {}
+            } else {
+                // Unknown character, advance to avoid infinite loop
+                ++pos;
             }
         }
 
