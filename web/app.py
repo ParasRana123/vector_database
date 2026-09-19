@@ -109,7 +109,8 @@ def add_document():
             resp = requests.post(
                 f"{VECTOR_DB_API_URL}/api/insert",
                 json={"collection": "default", "id": next_document_id, "text": text},
-                timeout=10,
+                headers={"Content-Type": "application/json"},
+                timeout=15,
             )
             if resp.status_code == 200:
                 documents.append(Document(next_document_id, text, []))
@@ -148,12 +149,13 @@ def search():
             resp = requests.post(
                 f"{VECTOR_DB_API_URL}/api/search",
                 json={"collection": "default", "query": query, "top_k": 5},
-                timeout=10,
+                headers={"Content-Type": "application/json"},
+                timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()
                 results = [
-                    {"id": r["id"], "text": r["payload"], "score": round(r["score"], 4)}
+                    {"id": r["id"], "text": r.get("payload", ""), "score": round(float(r.get("score", 0.0)), 4)}
                     for r in data.get("results", [])
                 ]
                 latency = data.get("latency_ms", 0.0)
@@ -229,7 +231,8 @@ def load_example():
                 requests.post(
                     f"{VECTOR_DB_API_URL}/api/insert",
                     json={"collection": "default", "id": next_document_id, "text": text},
-                    timeout=5,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
                 )
             except Exception:
                 pass
